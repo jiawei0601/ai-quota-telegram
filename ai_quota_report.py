@@ -13,7 +13,8 @@
 
 資料來源（都不會消耗模型額度，憑證只在本機讀取、只送往各家官方端點）：
   Claude : GET https://api.anthropic.com/api/oauth/usage，用 ~/.claude/.credentials.json 的 accessToken；
-           token 過期時退回 ~/.claude/rate-limits.json（終端 claude 的 statusline 落地檔，若有）
+           token 過期時先用一次最小 haiku 呼叫讓 claude CLI 刷新（CLAUDE_AUTO_REFRESH=0 可關），
+           仍失敗才退回 ~/.claude/rate-limits.json（終端 claude 的 statusline 落地檔，若有）
   Codex  : GET https://chatgpt.com/backend-api/wham/usage，用 ~/.codex/auth.json 的 access_token；
            端點失敗退回 ~/.codex/sessions 最新 session 記錄的 rate_limits
   agy    : 執行 `agy --print "/quota"`，解析回傳的 TSV
@@ -80,10 +81,25 @@ def get_json(url, headers):
 
 
 # ---------- Claude Code ----------
+def claude_refresh_token():
+    """access token 過期時，用一次最小的 haiku 呼叫讓 Claude Code 自己刷新 token（耗幾百 token，可用
+    CLAUDE_AUTO_REFRESH=0 關閉）。`claude auth status` 不會刷新，實測只有真的發模型請求才會。"""
+    if os.environ.get("CLAUDE_AUTO_REFRESH", "1") == "0":
+        return False
+    try:
+        subprocess.run(["claude", "-p", "回覆 ok", "--model", "haiku", "--max-turns", "1"], capture_output=True,
+                       timeout=120, shell=(os.name == "nt"), cwd=os.environ.get("TEMP") or os.environ.get("TMPDIR") or ".")
+        return True
+    except Exception:
+        return False
+
+
 def claude():
     d = HOME / ".claude"
     try:
         c = json.load(open(d / ".credentials.json", encoding="utf-8"))["claudeAiOauth"]
+        if c.get("expiresAt", 0) / 1000 <= time.time() and claude_refresh_token():
+            c = json.load(open(d / ".credentials.json", encoding="utf-8"))["claudeAiOauth"]
         if c.get("expiresAt", 0) / 1000 > time.time():
             u = get_json("https://api.anthropic.com/api/oauth/usage",
                          {"Authorization": "Bearer " + c["accessToken"], "anthropic-beta": "oauth-2025-04-20"})

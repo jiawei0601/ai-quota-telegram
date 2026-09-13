@@ -24,7 +24,7 @@
 
 ## 特點
 
-- **不消耗模型額度**：三個來源都是各家的用量端點或 CLI 內建指令，不會發出任何模型請求。
+- **幾乎不消耗模型額度**：三個來源都是各家的用量端點或 CLI 內建指令。唯一例外是 Claude token 過期時會發一次最小的 haiku 請求讓 CLI 刷新（可關閉，見下文）。
 - **憑證不離開你的電腦**：直接讀取各 CLI 登入後留在本機的 token，只送往各家官方端點。本工具不需要你另外申請 API key，也不會把 token 寫到別處。
 - **單一檔案、零相依**：只用 Python 標準函式庫。
 - **有退路**：Claude token 過期時退回 statusline 落地檔，Codex 端點失敗時退回本機 session 快照，訊息會明確標註資料來源與新舊。
@@ -34,7 +34,7 @@
 | 項目 | 說明 |
 |---|---|
 | Python 3.8+ | `python --version` 能跑即可 |
-| Claude Code | 已在本機以 claude.ai 帳號登入（Pro / Max）。會讀 `~/.claude/.credentials.json` |
+| Claude Code | 已在本機以 claude.ai 帳號登入（Pro / Max），`claude` 在 PATH。會讀 `~/.claude/.credentials.json` |
 | Codex CLI | 已 `codex login` 用 ChatGPT 帳號登入（API key 模式沒有訂閱額度可查）。會讀 `~/.codex/auth.json` |
 | Antigravity CLI | `agy` 在 PATH 且已登入 Google 帳號。會執行 `agy --print "/quota"` |
 | Telegram | 一個 Bot 與你的 chat id（下一節說明） |
@@ -120,7 +120,8 @@ Claude 與 Codex 的憑證路徑在三個平台相同（`~/.claude`、`~/.codex`
 ### Claude Code
 
 - 端點：`GET https://api.anthropic.com/api/oauth/usage`，帶本機 OAuth access token。
-- access token 只活幾小時，由 Claude Code 自己刷新。若你長時間沒開 Claude Code，token 會過期，此時退回 `~/.claude/rate-limits.json`（終端 claude 的狀態列落地檔，不一定存在）並在訊息標「⚠ token 已過期」。開一次終端 `claude` 即可刷新。
+- access token 只活約 8 小時，由 Claude Code 在發出模型請求時自己刷新（桌面 App 與 `claude auth status` 都不會刷新本機這份檔）。
+- 因此腳本發現 token 過期時，會先執行一次 `claude -p "回覆 ok" --model haiku --max-turns 1` 讓 CLI 刷新，代價是幾百個 token。不想要這個行為就設環境變數 `CLAUDE_AUTO_REFRESH=0`，此時退回 `~/.claude/rate-limits.json`（終端 claude 的狀態列落地檔，不一定存在）並在訊息標「⚠ token 已過期」。
 - 「5h」是滾動 5 小時窗，「7日」是週額度。
 
 ### Codex CLI
